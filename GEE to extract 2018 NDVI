@@ -1,0 +1,30 @@
+//to extract 2018 NDVI and park vegetation
+var l8collection = ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
+          .filterDate('2018-01-01', '2018-12-31');
+// create function to mask clouds, cloud shadows, snow
+var maskClouds = function(image){
+  // make a new single band image from the pixel qa band
+  var pixel_qa = image.select('pixel_qa');
+  // keep clear (0) and water (1) pixels
+  return image.updateMask(pixel_qa.eq(322));   
+};
+var l8masked = l8collection.map(maskClouds);
+var getNDVI = function(img){
+  return img.addBands(img.normalizedDifference(['B5','B4']).rename('NDVI'));
+};
+var l8ndvi = l8masked.map(getNDVI).select("NDVI")
+var median = l8ndvi.median().clip(roi)
+// only focus area
+var dataset = ee.ImageCollection('USGS/NLCD_RELEASES/2016_REL')
+.filter(ee.Filter.eq('system:index', '2016')).first().select('landcover').clip(roi);
+var park = dataset.eq(21)
+var urban = dataset.eq(22).or(dataset.eq(23)) //high-density,water,open space
+Map.addLayer(urban)
+var vegetation = median.updateMask(urban).clip(roi)
+var park = median.updateMask(park)
+Export.image.toDrive({
+ image:vegetation,
+  description: 'vegetation_2018',
+  scale: 250,
+   maxPixels: 1e13
+});
