@@ -1,0 +1,360 @@
+library(reshape2)
+library(tidyverse)
+library(bootstrap)
+library(QuantPsyc)  #姝ゅ寘涔熷彲浠ヨ緭鍑烘爣鍑嗗寲鐨勫洖褰掔郴鏁? lm.beta(lm_chap)
+library(relaimpo)
+library(psych)
+library(ggplot2)
+#remove spatial autocorrelation
+library(nlme)
+library(ape)
+library(MuMIn)
+library(ggstatsplot)
+library(rsq)
+library(extrafont)
+library(car)
+library(bfast)
+library(remotes)
+library(zoo)
+library(tidyverse)
+library(mblm)
+library(reshape2)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+windowsFonts(Arial = windowsFont("Arial"))
+stderr <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+library(extrafont)
+windowsFonts(Times=windowsFont("TT Arial"))
+###################Data pre-processing
+setwd("D:\\D\\Step_4_climate change")
+data<-read.table("2014_2018.csv",header=T, na.strings = "NA", sep=",")
+climate1<-read.table("climate_change.csv",header=T, na.strings = "NA", sep=",")
+climate2<-read.table("climate_NDVI_Z.csv",header=T, na.strings = "NA", sep=",")
+ORI<-read.table("ORI_census_tract.csv",header=T, na.strings = "NA", sep=",")
+median_age<-read.table("median_age.txt",header=T, na.strings = "NA", sep="\t")
+Data = merge(data,ORI)
+Data = merge(Data,climate1)
+Data = merge(Data,climate2)
+Data = merge(Data,median_age)
+Data = na.omit(Data)
+Data$NDVI_Z_Change = Data$NDVI_Z_D - Data$NDVI_Z_ND
+##################################we choose 75% as thereshold as majority
+White_Q75 = quantile(Data$white, prob=c(0.75))
+POC_Q75 = quantile(Data$POC, prob=c(0.75))
+POC = Data[Data$POC > POC_Q75,]
+POC=transform(POC, Tag = "POC")
+White = Data[Data$white > White_Q75,]
+White=transform(White, Tag = "White")
+################################PLOT figure-1a
+W = as.data.frame(cbind(White$Tag,White$NDVI_Z_Change,White$Climate))
+W[,2] <- sapply(W[,2],as.numeric)
+colnames(W) = c("Race","NDVI","Climate")
+P = as.data.frame(cbind(POC$Tag,POC$NDVI_Z_Change,POC$Climate))
+P[,2] <- sapply(P[,2],as.numeric)
+colnames(P) = c("Race","NDVI","Climate")
+###############by climate zone
+W_eq = W[W$Climate %in% c(1:3),]
+W_arid = W[W$Climate %in% c(4:7),]
+W_tem = W[W$Climate %in% c(8:16),]
+W_snow = W[W$Climate %in% c(17:30),]
+
+P_eq = P[P$Climate %in% c(1:3),]
+P_arid = P[P$Climate %in% c(4:7),]
+P_tem = P[P$Climate %in% c(8:16),]
+P_snow = P[P$Climate %in% c(17:30),]
+#############ALL
+W_M = median(W[,2],na.rm=TRUE)
+W_S = stderr(W[,2],na.rm=TRUE)
+P_M = median(P[,2],na.rm=TRUE)
+P_S = stderr(P[,2],na.rm=TRUE)
+all = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+#############Temperate
+W_M = median(W_tem[,2],na.rm=TRUE)
+W_S = stderr(W_tem[,2],na.rm=TRUE)
+P_M = median(P_tem[,2],na.rm=TRUE)
+P_S = stderr(P_tem[,2],na.rm=TRUE)
+tem = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+############Arid
+W_M = median(W_arid[,2],na.rm=TRUE)
+W_S = stderr(W_arid[,2],na.rm=TRUE)
+P_M = median(P_arid[,2],na.rm=TRUE)
+P_S = stderr(P_arid[,2],na.rm=TRUE)
+arid = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+###########Snow
+W_M = median(W_snow[,2],na.rm=TRUE)
+W_S = stderr(W_snow[,2],na.rm=TRUE)
+P_M = median(P_snow[,2],na.rm=TRUE)
+P_S = stderr(P_snow[,2],na.rm=TRUE)
+snow = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+##########eq
+W_M = median(W_eq[,2],na.rm=TRUE)
+W_S = stderr(W_eq[,2],na.rm=TRUE)
+P_M = median(P_eq[,2],na.rm=TRUE)
+P_S = stderr(P_eq[,2],na.rm=TRUE)
+eq = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+################################### ggplot2 to plot
+cli = rbind(all,eq,tem,snow,arid)
+cli = transform(cli,race = c("POC","White"))
+cli = transform(cli,Climate = c("ALL","ALL","Equatorial","Equatorial","Temperate","Temperate",
+                                "Sonw","Sonw" ,"Arid","Arid"))
+colnames(cli) = c("NDVI","SE","Race","Climate")
+
+ND=ggplot(cli, aes(x=Climate, y=NDVI, fill=Race)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=NDVI-2*SE, ymax=NDVI+2*SE), width=.2,
+                position=position_dodge(.9))+ 
+  scale_fill_manual(values=c("#3689AE",'#D45C41'))+
+  theme(axis.title=element_blank(),
+        axis.text = element_text(size=24,face="plain",color="black"),
+        panel.background=element_rect(colour="black",fill=NA),
+        panel.grid.minor=element_blank(),
+        text=element_text(size=24),
+        legend.position="right",
+        legend.text = element_text(size=24
+        ),
+        legend.background=element_rect(colour=NA,fill=NA),
+        axis.ticks=element_line(colour="black"))+ theme(legend.position="bottom")+ylim(-0.8,0)
+ggsave("NDVI_Z_change_Race.pdf",plot = ND,dpi=600,width = 8,height = 5)
+
+
+
+#################### PLOT figure-1b
+poverty2Q75 = quantile(Data$poverty2, prob=c(0.75))
+povertyQ75 = quantile(Data$poverty, prob=c(0.75))
+POC = Data[Data$poverty > povertyQ75,]
+POC=transform(POC, Tag = "POC")
+White = Data[Data$poverty2 > poverty2Q75,]
+White=transform(White, Tag = "White")
+################################PLOT figure-1a
+W = as.data.frame(cbind(White$Tag,White$NDVI_Z_Change,White$Climate))
+W[,2] <- sapply(W[,2],as.numeric)
+colnames(W) = c("Race","NDVI","Climate")
+P = as.data.frame(cbind(POC$Tag,POC$NDVI_Z_Change,POC$Climate))
+P[,2] <- sapply(P[,2],as.numeric)
+colnames(P) = c("Race","NDVI","Climate")
+###############by climate zone
+W_eq = W[W$Climate %in% c(1:3),]
+W_arid = W[W$Climate %in% c(4:7),]
+W_tem = W[W$Climate %in% c(8:16),]
+W_snow = W[W$Climate %in% c(17:30),]
+
+P_eq = P[P$Climate %in% c(1:3),]
+P_arid = P[P$Climate %in% c(4:7),]
+P_tem = P[P$Climate %in% c(8:16),]
+P_snow = P[P$Climate %in% c(17:30),]
+#############ALL
+W_M = median(W[,2],na.rm=TRUE)
+W_S = stderr(W[,2],na.rm=TRUE)
+P_M = median(P[,2],na.rm=TRUE)
+P_S = stderr(P[,2],na.rm=TRUE)
+all = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+#############Temperate
+W_M = median(W_tem[,2],na.rm=TRUE)
+W_S = stderr(W_tem[,2],na.rm=TRUE)
+P_M = median(P_tem[,2],na.rm=TRUE)
+P_S = stderr(P_tem[,2],na.rm=TRUE)
+tem = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+############Arid
+W_M = median(W_arid[,2],na.rm=TRUE)
+W_S = stderr(W_arid[,2],na.rm=TRUE)
+P_M = median(P_arid[,2],na.rm=TRUE)
+P_S = stderr(P_arid[,2],na.rm=TRUE)
+arid = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+###########Snow
+W_M = median(W_snow[,2],na.rm=TRUE)
+W_S = stderr(W_snow[,2],na.rm=TRUE)
+P_M = median(P_snow[,2],na.rm=TRUE)
+P_S = stderr(P_snow[,2],na.rm=TRUE)
+snow = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+##########eq
+W_M = median(W_eq[,2],na.rm=TRUE)
+W_S = stderr(W_eq[,2],na.rm=TRUE)
+P_M = median(P_eq[,2],na.rm=TRUE)
+P_S = stderr(P_eq[,2],na.rm=TRUE)
+eq = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+################################### ggplot2 to plot
+cli = rbind(all,eq,tem,snow,arid)
+cli = transform(cli,race = c("Below poverty","Above 2×poverty"))
+cli = transform(cli,Climate = c("ALL","ALL","Equatorial","Equatorial","Temperate","Temperate",
+                                "Sonw","Sonw" ,"Arid","Arid"))
+colnames(cli) = c("NDVI","SE","Poverty","Climate")
+
+ND = ggplot(cli, aes(x=Climate, y=NDVI, fill=Poverty)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=NDVI-2*SE, ymax=NDVI+2*SE), width=.2,
+                position=position_dodge(.9))+ 
+  scale_fill_manual(values=c("#3689AE",'#D45C41'))+
+  theme(axis.title=element_blank(),
+        axis.text = element_text(size=24,face="plain",color="black"),
+        panel.background=element_rect(colour="black",fill=NA),
+        panel.grid.minor=element_blank(),
+        text=element_text(size=24),
+        legend.position="right",
+        legend.text = element_text(size=24
+        ),
+        legend.background=element_rect(colour=NA,fill=NA),
+        axis.ticks=element_line(colour="black"))+ theme(legend.position="bottom")+ylim(-0.8,0)
+ggsave("NDVI_Z_change_poverty.pdf",plot = ND,dpi=600,width = 8,height = 5)
+
+
+
+###################################Plot-1c
+high = quantile(Data$education, prob=c(0.75))
+low = quantile(Data$education, prob=c(0.25))
+POC = Data[Data$education < low,]
+POC=transform(POC, Tag = "POC")
+White = Data[Data$education > high,]
+White=transform(White, Tag = "White")
+################################PLOT figure-1a
+W = as.data.frame(cbind(White$Tag,White$NDVI_Z_Change,White$Climate))
+W[,2] <- sapply(W[,2],as.numeric)
+colnames(W) = c("Race","NDVI","Climate")
+P = as.data.frame(cbind(POC$Tag,POC$NDVI_Z_Change,POC$Climate))
+P[,2] <- sapply(P[,2],as.numeric)
+colnames(P) = c("Race","NDVI","Climate")
+###############by climate zone
+W_eq = W[W$Climate %in% c(1:3),]
+W_arid = W[W$Climate %in% c(4:7),]
+W_tem = W[W$Climate %in% c(8:16),]
+W_snow = W[W$Climate %in% c(17:30),]
+
+P_eq = P[P$Climate %in% c(1:3),]
+P_arid = P[P$Climate %in% c(4:7),]
+P_tem = P[P$Climate %in% c(8:16),]
+P_snow = P[P$Climate %in% c(17:30),]
+#############ALL
+W_M = median(W[,2],na.rm=TRUE)
+W_S = stderr(W[,2],na.rm=TRUE)
+P_M = median(P[,2],na.rm=TRUE)
+P_S = stderr(P[,2],na.rm=TRUE)
+all = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+#############Temperate
+W_M = median(W_tem[,2],na.rm=TRUE)
+W_S = stderr(W_tem[,2],na.rm=TRUE)
+P_M = median(P_tem[,2],na.rm=TRUE)
+P_S = stderr(P_tem[,2],na.rm=TRUE)
+tem = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+############Arid
+W_M = median(W_arid[,2],na.rm=TRUE)
+W_S = stderr(W_arid[,2],na.rm=TRUE)
+P_M = median(P_arid[,2],na.rm=TRUE)
+P_S = stderr(P_arid[,2],na.rm=TRUE)
+arid = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+###########Snow
+W_M = median(W_snow[,2],na.rm=TRUE)
+W_S = stderr(W_snow[,2],na.rm=TRUE)
+P_M = median(P_snow[,2],na.rm=TRUE)
+P_S = stderr(P_snow[,2],na.rm=TRUE)
+snow = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+##########eq
+W_M = median(W_eq[,2],na.rm=TRUE)
+W_S = stderr(W_eq[,2],na.rm=TRUE)
+P_M = median(P_eq[,2],na.rm=TRUE)
+P_S = stderr(P_eq[,2],na.rm=TRUE)
+eq = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+################################### ggplot2 to plot
+cli = rbind(all,eq,tem,snow,arid)
+cli = transform(cli,race = c("Low","High"))
+cli = transform(cli,Climate = c("ALL","ALL","Equatorial","Equatorial","Temperate","Temperate",
+                                "Sonw","Sonw" ,"Arid","Arid"))
+colnames(cli) = c("NDVI","SE","Education","Climate")
+
+ND = ggplot(cli, aes(x=Climate, y=NDVI, fill=Education)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=NDVI-2*SE, ymax=NDVI+2*SE), width=.2,
+                position=position_dodge(.9))+ 
+  scale_fill_manual(values=c("#3689AE",'#D45C41'))+
+  theme(axis.title=element_blank(),
+        axis.text = element_text(size=24,face="plain",color="black"),
+        panel.background=element_rect(colour="black",fill=NA),
+        panel.grid.minor=element_blank(),
+        text=element_text(size=24),
+        legend.position="right",
+        legend.text = element_text(size=24
+        ),
+        legend.background=element_rect(colour=NA,fill=NA),
+        axis.ticks=element_line(colour="black"))+ theme(legend.position="bottom")+ylim(-0.8,0)
+ggsave("NDVI_Z_change_education.pdf",plot = ND,dpi=600,width = 8,height = 5)
+
+
+############3
+high = quantile(Data$Median_age, prob=c(0.75))
+low = quantile(Data$Median_age, prob=c(0.25))
+POC = Data[Data$Median_age < low,]
+POC=transform(POC, Tag = "POC")
+White = Data[Data$Median_age > high,]
+White=transform(White, Tag = "White")
+################################PLOT figure-1a
+W = as.data.frame(cbind(White$Tag,White$NDVI_Z_Change,White$Climate))
+W[,2] <- sapply(W[,2],as.numeric)
+colnames(W) = c("Race","NDVI","Climate")
+P = as.data.frame(cbind(POC$Tag,POC$NDVI_Z_Change,POC$Climate))
+P[,2] <- sapply(P[,2],as.numeric)
+colnames(P) = c("Race","NDVI","Climate")
+###############by climate zone
+W_eq = W[W$Climate %in% c(1:3),]
+W_arid = W[W$Climate %in% c(4:7),]
+W_tem = W[W$Climate %in% c(8:16),]
+W_snow = W[W$Climate %in% c(17:30),]
+
+P_eq = P[P$Climate %in% c(1:3),]
+P_arid = P[P$Climate %in% c(4:7),]
+P_tem = P[P$Climate %in% c(8:16),]
+P_snow = P[P$Climate %in% c(17:30),]
+#############ALL
+W_M = median(W[,2],na.rm=TRUE)
+W_S = stderr(W[,2],na.rm=TRUE)
+P_M = median(P[,2],na.rm=TRUE)
+P_S = stderr(P[,2],na.rm=TRUE)
+all = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+#############Temperate
+W_M = median(W_tem[,2],na.rm=TRUE)
+W_S = stderr(W_tem[,2],na.rm=TRUE)
+P_M = median(P_tem[,2],na.rm=TRUE)
+P_S = stderr(P_tem[,2],na.rm=TRUE)
+tem = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+############Arid
+W_M = median(W_arid[,2],na.rm=TRUE)
+W_S = stderr(W_arid[,2],na.rm=TRUE)
+P_M = median(P_arid[,2],na.rm=TRUE)
+P_S = stderr(P_arid[,2],na.rm=TRUE)
+arid = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+###########Snow
+W_M = median(W_snow[,2],na.rm=TRUE)
+W_S = stderr(W_snow[,2],na.rm=TRUE)
+P_M = median(P_snow[,2],na.rm=TRUE)
+P_S = stderr(P_snow[,2],na.rm=TRUE)
+snow = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+##########eq
+W_M = median(W_eq[,2],na.rm=TRUE)
+W_S = stderr(W_eq[,2],na.rm=TRUE)
+P_M = median(P_eq[,2],na.rm=TRUE)
+P_S = stderr(P_eq[,2],na.rm=TRUE)
+eq = cbind(rbind(P_M,W_M),rbind(P_S,W_S))
+################################### ggplot2 to plot
+cli = rbind(all,eq,tem,snow,arid)
+cli = transform(cli,race = c("Low","High"))
+cli = transform(cli,Climate = c("ALL","ALL","Equatorial","Equatorial","Temperate","Temperate",
+                                "Sonw","Sonw" ,"Arid","Arid"))
+colnames(cli) = c("NDVI","SE","Age","Climate")
+
+ND = ggplot(cli, aes(x=Climate, y=NDVI, fill=Age)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=NDVI-2*SE, ymax=NDVI+2*SE), width=.2,
+                position=position_dodge(.9))+ 
+  scale_fill_manual(values=c("#3689AE",'#D45C41'))+
+  theme(axis.title=element_blank(),
+        axis.text = element_text(size=24,face="plain",color="black"),
+        panel.background=element_rect(colour="black",fill=NA),
+        panel.grid.minor=element_blank(),
+        text=element_text(size=24),
+        legend.position="right",
+        legend.text = element_text(size=24
+        ),
+        legend.background=element_rect(colour=NA,fill=NA),
+        axis.ticks=element_line(colour="black"))+ theme(legend.position="bottom")+ylim(-0.8,0)
+ggsave("NDVI_Z_change_Median_age.pdf",plot = ND,dpi=600,width = 8,height = 5)
