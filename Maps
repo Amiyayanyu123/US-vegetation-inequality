@@ -1,0 +1,197 @@
+library(reshape2)
+library(tidyverse)
+library(bootstrap)
+library(QuantPsyc)  #姝ゅ寘涔熷彲浠ヨ緭鍑烘爣鍑嗗寲鐨勫洖褰掔郴鏁? lm.beta(lm_chap)
+library(relaimpo)
+library(psych)
+library(ggplot2)
+#remove spatial autocorrelation
+library(nlme)
+library(ape)
+library(MuMIn)
+library(ggstatsplot)
+library(rsq)
+library(extrafont)
+library(car)
+library(bfast)
+library(remotes)
+library(zoo)
+library(tidyverse)
+library(mblm)
+library(reshape2)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+windowsFonts(Arial = windowsFont("Arial"))
+stderr <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+library(extrafont)
+windowsFonts(Times=windowsFont("TT Arial"))
+###################Data pre-processing
+setwd("D:\\D\\Step_4_climate change")
+data<-read.table("2014_2018.csv",header=T, na.strings = "NA", sep=",")
+climate1<-read.table("climate_change.csv",header=T, na.strings = "NA", sep=",")
+climate2<-read.table("climate_NDVI_Z.csv",header=T, na.strings = "NA", sep=",")
+ORI<-read.table("ORI_census_tract.csv",header=T, na.strings = "NA", sep=",")
+median_age<-read.table("median_age.txt",header=T, na.strings = "NA", sep="\t")
+Data = merge(data,ORI)
+Data = merge(Data,climate1)
+Data = merge(Data,climate2)
+Data = merge(Data,median_age)
+Data = na.omit(Data)
+Data$NDVI_Z_Change = Data$D_R - Data$ND_R
+
+
+dt = na.omit(Data)
+list = dt$ORI
+list = unique(list)
+
+library(DescTools)
+library(entropy)
+library(ape)
+q25 = {}
+q75 = {}
+K={}
+ID={}
+DIF={}
+for(b in list){
+  dt_sub = dt[dt[,12] == b,]
+  dt_sub = na.omit(dt_sub)
+  n = nrow(dt_sub)
+  
+  below = quantile(dt_sub$poverty, prob=c(0.75))
+  two = quantile(dt_sub$poverty2, prob=c(0.75))
+  below_poverty = mean(dt_sub[dt_sub$poverty > below,]$NDVI_Z_Change)
+  two_poverty = mean(dt_sub[dt_sub$poverty2 > two,]$NDVI_Z_Change)
+  p = wilcox.test(dt_sub[dt_sub$poverty > below,]$NDVI_Z_Change
+              ,dt_sub[dt_sub$poverty2 > two,]$NDVI_Z_Change,alternative = "two.sided",exact=FALSE)$p.value
+  dif = two_poverty-below_poverty
+  
+  ID = rbind(ID,b)
+  q25 = rbind(q25,below_poverty)
+  q75 = rbind(q75,two_poverty)
+  K=rbind(K,p)
+  DIF = rbind(DIF,dif)
+}
+
+all = cbind(ID,q25,q75,DIF,K)
+all = na.omit(all)
+colnames(all) = c("ORI","below_poverty","two_poverty","Income_DIF","P")
+write.table(all,"NDVI_z_Income.csv",row.names=F,sep=",")
+
+#####################################################
+dt = na.omit(Data)
+list = dt$ORI
+list = unique(list)
+
+library(DescTools)
+library(entropy)
+library(ape)
+q25 = {}
+q75 = {}
+K={}
+ID={}
+DIF={}
+for(b in list){
+  dt_sub = dt[dt[,12] == b,]
+  dt_sub = na.omit(dt_sub)
+  n = nrow(dt_sub)
+  
+  below = quantile(dt_sub$white, prob=c(0.75))
+  two = quantile(dt_sub$POC, prob=c(0.75))
+  below_poverty = mean(dt_sub[dt_sub$white > below,]$NDVI_Z_Change)
+  two_poverty = mean(dt_sub[dt_sub$POC > two,]$NDVI_Z_Change)
+  p = ks.test(dt_sub[dt_sub$white > below,]$NDVI_Z_Change
+                  ,dt_sub[dt_sub$POC > two,]$NDVI_Z_Change,alternative = "two.sided",exact=FALSE)$p.value
+  dif = below_poverty-two_poverty
+  
+  ID = rbind(ID,b)
+  q25 = rbind(q25,below_poverty)
+  q75 = rbind(q75,two_poverty)
+  K=rbind(K,p)
+  DIF = rbind(DIF,dif)
+}
+
+all = cbind(ID,q25,q75,DIF,K)
+all = na.omit(all)
+colnames(all) = c("ORI","white","POC","Race_DIF","P")
+write.table(all,"NDVI_Z_Race.csv",row.names=F,sep=",")
+
+##############################################
+dt = na.omit(Data)
+list = dt$ORI
+list = unique(list)
+
+library(DescTools)
+library(entropy)
+library(ape)
+q25 = {}
+q75 = {}
+K={}
+ID={}
+DIF={}
+for(b in list){
+  dt_sub = dt[dt[,12] == b,]
+  dt_sub = na.omit(dt_sub)
+  n = nrow(dt_sub)
+  
+  below = quantile(dt_sub$education, prob=c(0.75))
+  two = quantile(dt_sub$education, prob=c(0.25))
+  below_poverty = mean(dt_sub[dt_sub$education > below,]$NDVI_Z_Change)
+  two_poverty = mean(dt_sub[dt_sub$education < two,]$NDVI_Z_Change)
+  p = wilcox.test(dt_sub[dt_sub$education > below,]$NDVI_Z_Change
+              ,dt_sub[dt_sub$education < two,]$NDVI_Z_Change,alternative = "two.sided",exact=FALSE)$p.value
+  dif = below_poverty-two_poverty
+  
+  ID = rbind(ID,b)
+  q25 = rbind(q25,below_poverty)
+  q75 = rbind(q75,two_poverty)
+  K=rbind(K,p)
+  DIF = rbind(DIF,dif)
+}
+
+all = cbind(ID,q25,q75,DIF,K)
+all = na.omit(all)
+colnames(all) = c("ORI","high_education","low_education","education_DIF","P")
+write.table(all,"NDVI_Z_education.csv",row.names=F,sep=",")
+
+
+################################33
+dt = na.omit(Data)
+list = dt$ORI
+list = unique(list)
+
+library(DescTools)
+library(entropy)
+library(ape)
+q25 = {}
+q75 = {}
+K={}
+ID={}
+DIF={}
+for(b in list){
+  dt_sub = dt[dt[,12] == b,]
+  dt_sub = na.omit(dt_sub)
+  n = nrow(dt_sub)
+  
+  below = quantile(dt_sub$Median_age, prob=c(0.75))
+  two = quantile(dt_sub$Median_age, prob=c(0.25))
+  below_poverty = mean(dt_sub[dt_sub$Median_age > below,]$NDVI_Z_Change)
+  two_poverty = mean(dt_sub[dt_sub$Median_age < two,]$NDVI_Z_Change)
+  p = wilcox.test(dt_sub[dt_sub$Median_age > below,]$NDVI_Z_Change
+                  ,dt_sub[dt_sub$Median_age < two,]$NDVI_Z_Change,alternative = "two.sided",exact=FALSE)$p.value
+  dif = below_poverty-two_poverty
+  
+  ID = rbind(ID,b)
+  q25 = rbind(q25,below_poverty)
+  q75 = rbind(q75,two_poverty)
+  K=rbind(K,p)
+  DIF = rbind(DIF,dif)
+}
+
+all = cbind(ID,q25,q75,DIF,K)
+all = na.omit(all)
+colnames(all) = c("ORI","high_Median_age","low_Median_age","Median_age_DIF","P")
+write.table(all,"NDVI_Z_Median_age.csv",row.names=F,sep=",")
