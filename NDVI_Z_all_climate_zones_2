@@ -355,3 +355,81 @@ ND = ggplot(cli, aes(x=Climate, y=NDVI, fill=Age)) +
         axis.ticks=element_line(colour="black"))+ theme(legend.position="bottom")+
   ylim(-0.8,0)
 ggsave("NDVI_Z_change_Age_2.pdf",plot = ND,dpi=600,width = 8,height = 5)
+
+ApplyQuintiles1 <- function(x) {
+  cut(x, breaks=c(quantile(Data$white, probs = seq(0, 1, by = 0.20))), 
+      labels=c("0-20","20-40","40-60","60-80","80-100"), include.lowest=TRUE)
+}
+Data$W <- sapply(Data$white, ApplyQuintiles1)
+#
+ApplyQuintiles2 <- function(x) {
+  cut(x, breaks=c(quantile(Data$hispanic, probs = seq(0, 1, by = 0.20))), 
+      labels=c("0-20","20-40","40-60","60-80","80-100"), include.lowest=TRUE)
+}
+Data$H <- sapply(Data$hispanic, ApplyQuintiles2)
+#
+ApplyQuintiles3 <- function(x) {
+  cut(x, breaks=c(quantile(Data$black, probs = seq(0, 1, by = 0.20))), 
+      labels=c("0-20","20-40","40-60","60-80","80-100"), include.lowest=TRUE)
+}
+Data$B <- sapply(Data$black, ApplyQuintiles3)
+#
+ApplyQuintiles4 <- function(x) {
+  cut(x, breaks=c(quantile(Data$other, probs = seq(0, 1, by = 0.20))), 
+      labels=c("0-20","20-40","40-60","60-80","80-100"), include.lowest=TRUE)
+}
+Data$O <- sapply(Data$other, ApplyQuintiles4)
+
+
+White = cbind(Data[,23],Data[,24])
+colnames(White) = c("NDVI_Z_Change","Group")
+White = transform(White, Race = "White")
+
+Black = cbind(Data[,23],Data[,25])
+colnames(Black) = c("NDVI_Z_Change","Group")
+Black = transform(Black, Race = "Black")
+
+Other = cbind(Data[,23],Data[,26])
+colnames(Other) = c("NDVI_Z_Change","Group")
+Other = transform(Other, Race = "Other")
+
+Hispanic = cbind(Data[,23],Data[,27])
+colnames(Hispanic) = c("NDVI_Z_Change","Group")
+Hispanic = transform(Hispanic, Race = "Hispanic")
+all = rbind(White,Hispanic,Black,Other)
+
+data_summary <- function(x) {
+  m <- mean(x)
+  ymin <- m-sd(x)
+  ymax <- m+sd(x)
+  return(c(y=m,ymin=ymin,ymax=ymax))
+}
+
+stderr <- function(x) {
+  sqrt(var(x[!is.na(x)]) / length(x[!is.na(x)]))
+}
+
+pdf("Race_all_bpwo.pdf",  width=8, height=5)
+ggplot(all, aes(x=factor(Group), y=NDVI_Z_Change,fill=Race,group = Race))+
+  stat_summary(fun.data = "mean_cl_boot",
+               geom = "pointrange",
+               color = "grey",
+               shape = 21,
+               size = 1)+
+  geom_smooth(data = subset(all, Race== "White" ),method='gam', se = T,aes(x=factor(Group), y=NDVI_Z_Change),color ="#1B61B5",size = 1.5,linetype="dashed") +
+  geom_smooth(data = subset(all, Race== "Black" ),method='gam', se = T,aes(x=factor(Group), y=NDVI_Z_Change),color ="#00AC56",size = 1.5,linetype="dashed") +
+  geom_smooth(data = subset(all, Race== "Hispanic" ),method='gam', se = T,aes(x=factor(Group), y=NDVI_Z_Change),color ="#EE4000",size = 1.5,linetype="dashed") +
+  geom_smooth(data = subset(all, Race== "Other" ),method='gam', se = T,aes(x=factor(Group), y=NDVI_Z_Change),color ="#494545",size = 1.5,linetype="dashed") +
+  scale_fill_manual(values=c("#00AC56","#EE4000","#494545","#1B61B5"))+
+  theme(axis.title=element_text(size=20,face="bold"),
+        axis.text =element_text(size=17, face="bold"),
+        panel.background=element_rect(colour="black",fill=NA),
+        panel.grid.minor=element_blank(),
+        text=element_text(size=20,face="bold"),
+        legend.position="right",
+        legend.background=element_rect(colour=NA,fill=NA),
+        axis.ticks=element_line(colour="black"))+ 
+  xlab("Group by percentile")+ylab("NDVI-Zscores Change")+
+theme(legend.position="none")
+dev.off()
+
