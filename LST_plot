@@ -1,3 +1,170 @@
+library(reshape2)
+library(tidyverse)
+library(bootstrap)
+library(QuantPsyc)  #姝ゅ寘涔熷彲浠ヨ緭鍑烘爣鍑嗗寲鐨勫洖褰掔郴鏁? lm.beta(lm_chap)
+library(relaimpo)
+library(psych)
+library(ggplot2)
+#remove spatial autocorrelation
+library(nlme)
+library(ape)
+library(MuMIn)
+library(ggstatsplot)
+library(rsq)
+library(extrafont)
+library(car)
+library(bfast)
+library(remotes)
+library(zoo)
+library(tidyverse)
+library(mblm)
+library(reshape2)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+windowsFonts(Arial = windowsFont("Arial"))
+stderr <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+library(extrafont)
+windowsFonts(Times=windowsFont("TT Arial"))
+setwd("D:\\D\\Figures\\CE")
+data<-read.table("Average_CE.csv",header=T, na.strings = "NA", sep=",")
+ORI = read.table("ORI_census_tract.csv",header=T, na.strings = "NA", sep=",")
+Light_DEM<-read.table("NightLight_DEM.csv",header=T, na.strings = "NA", sep=",")
+Data = merge(ORI,data,by.x = "GEOID_Data")
+Data = merge(Data,Light_DEM)
+Data = na.omit(Data)
+
+dt<-read.table("D_ND_LST_NDVI.csv",header=T, na.strings = "NA", sep=",")
+dt = na.omit(dt)
+list = dt$ORI1
+list = unique(list)
+
+library(DescTools)
+library(entropy)
+library(ape)
+lm_b_social={}
+lm_p_social={}
+R2_adj_all={}
+lmg_social={}
+ID = {}
+
+for(b in list){
+  dt_sub = dt[dt[,1] == b,]
+  dt_sub = na.omit(dt_sub)
+  n = nrow(dt_sub)
+  
+  CE <-lm(formula= JJA_LST_ND~JJA_NDVI_ND,data=dt_sub)
+  regress_CE <-as.data.frame(summary(CE)[4])
+  print(regress_CE[4])
+  lm_b_social=rbind(lm_b_social, regress_CE[,1])
+  lm_p_social=rbind(lm_p_social, regress_CE[,4])
+  
+  R2_adj<-summary(CE)[[8]]#?
+  R2_adj_all=rbind(R2_adj_all, R2_adj)
+  ID=rbind(ID,b)
+}
+
+all = cbind(ID,lm_b_social,lm_p_social,R2_adj_all)
+all = na.omit(all)
+write.table(all,"CE_nonDrought.csv",row.names=F,sep=",")
+############################3
+setwd("D:\\D\\Step_8_LST\\cooling_effect\\D_Cooling_effect")
+data1<-read.table("Maps.csv",header=T, na.strings = "NA", sep=",")
+data2<-read.table("CE_nonDrought_1.csv",header=T, na.strings = "NA", sep=",")
+data3<-read.table("CE_Drought.csv",header=T, na.strings = "NA", sep=",")
+
+data = merge(data1,data2)
+data = merge(data,data3)
+data = na.omit(data)
+write.table(data,"data_CE_drought_nondrought.csv",row.names=T,sep=",")
+
+########################################33
+setwd("D:\\D\\Figures\\LST_JJA_NDVI")
+data<-read.table("2014_2018.csv",header=T, na.strings = "NA", sep=",")
+climate1<-read.table("climate_change.csv",header=T, na.strings = "NA", sep=",")
+climate2<-read.table("climate_NDVI_Z.csv",header=T, na.strings = "NA", sep=",")
+ORI<-read.table("ORI_census_tract.csv",header=T, na.strings = "NA", sep=",")
+median_age<-read.table("median_age.txt",header=T, na.strings = "NA", sep="\t")
+LST<-read.table("LST.csv",header=T, na.strings = "NA", sep=",")
+LST_P90 = read.table("LST_P90_JJA.csv",header=T, na.strings = "NA", sep=",")
+delta = read.table("Delta.csv",header=T, na.strings = "NA", sep=",")
+Night_LST = read.table("Night_LST.csv",header=T, na.strings = "NA", sep=",")
+
+Data = merge(data,ORI)
+Data = merge(Data,climate1)
+Data = merge(Data,climate2)
+Data = merge(Data,median_age)
+Data = merge(Data,LST)
+Data = merge(Data,LST_P90)
+Data = merge(Data,delta)
+Data = merge(Data,Night_LST)
+
+Data = na.omit(Data)
+Data$NDVI_Z_Change = Data$NDVI_Z_D - Data$NDVI_Z_ND
+
+ApplyQuintiles2 <- function(x) {
+  cut(x, breaks=c(quantile(Data$NDVI_Z_Change, probs = seq(0, 1, by = 0.10))), 
+      labels=c("0-10","10-20","20-30","30-40","40-50","50-60","60-70","70-80","80-90","90-100"), include.lowest=TRUE)
+}
+Data$NDVI_Z_quantile <- sapply(Data$NDVI_Z_Change, ApplyQuintiles2)
+
+LST = cbind(Data$NDVI_Z_quantile,Data$Night_JJA_ND,Data$Night_JJA_D)
+LST = as.data.frame(LST)
+colnames(LST)=c("Quantile","JJA_ND_LST_P90","JJA_D_LST_P90")
+detach(package:plyr)
+stderr <- function(x) {
+  sqrt(var(x[!is.na(x)]) / length(x[!is.na(x)]))
+}
+
+JJA_LST_NDVI_Z = LST %>%
+  group_by(Quantile) %>%
+  summarize(ND_JJA_LST_median = median(JJA_ND_LST_P90),
+            ND_JJA_LST_q75 = quantile(JJA_ND_LST_P90,probs = c(0.75)),
+            ND_JJA_LST_q25 = quantile(JJA_ND_LST_P90,probs = c(0.25)),
+            
+            D_JJA_LST_median = median(JJA_D_LST_P90),
+            D_JJA_LST_q75 = quantile(JJA_D_LST_P90,probs = c(0.75)),
+            D_JJA_LST_q25 = quantile(JJA_D_LST_P90,probs = c(0.25)),
+             )
+
+JJA_LST_NDVI_Z = LST %>%
+  group_by(Quantile) %>%
+  summarize(ND_JJA_LST_mean = mean(JJA_ND_LST_P90),
+            ND_JJA_LST_q75 = stderr(JJA_ND_LST_P90),
+            
+            D_JJA_LST_mean = mean(JJA_D_LST_P90),
+            D_JJA_LST_q75 = stderr(JJA_D_LST_P90),
+  )
+write.table(JJA_LST_NDVI_Z,"Night_JJA_LST_NDVI_Z_se.csv",row.names=T,sep=",")
+#############
+delta = na.omit(delta)
+delta = merge(delta,Night_LST)
+
+ApplyQuintiles <- function(x) {
+  cut(x, breaks=c(quantile(Data$Delta_NDVI, probs = seq(0, 1, by = 0.10))), 
+      labels=c("0-10","10-20","20-30","30-40","40-50","50-60","60-70","70-80","80-90","90-100"), include.lowest=TRUE)
+}
+delta$Delta_NDVI_quantile <- sapply(delta$Delta_NDVI, ApplyQuintiles)
+LST = cbind(delta$Delta_NDVI_quantile,delta$Delta_Night_LST)
+LST = as.data.frame(LST)
+colnames(LST)=c("Delta_NDVI_quantile","Delta_LST")
+detach(package:plyr)
+
+delta_LST_NDVI = LST %>%
+  group_by(Delta_NDVI_quantile) %>%
+  summarize(Delta_LST_median = median(Delta_LST),
+            Delta_LST_q75 = quantile(Delta_LST,probs = c(0.75)),
+            Delta_LST_q25 = quantile(Delta_LST,probs = c(0.25)),
+            
+            Delta_LST_mean = mean(Delta_LST),
+            Delta_LST_se = stderr(Delta_LST))
+
+write.table(delta_LST_NDVI,"delta_LST_NDVI_Night.csv",row.names=T,sep=",")
+######################GGplot
+
 #+++++++++++++++++++++++++
 # Function to calculate the mean and the standard deviation
 # for each group
@@ -190,18 +357,31 @@ ggplot(data = box_data_CZ,aes(x = CZ,y=Dif))+
         axis.title=element_text(size=20,face="bold",color="black") ,
         legend.position="none")
 ########################
-box_data_Area = as.data.frame(cbind(CE$Dif_CE,CE$Area))
-colnames(box_data_Area) = c("Dif","Area")
+box_data_Area = as.data.frame(cbind(CE$Slope,CE$Slope_ND,CE$Area))
+colnames(box_data_Area) = c("D","ND","Area")
 ApplyQuintiles <- function(x) {
   cut(x, breaks=c(quantile(box_data_Area$Area, probs = seq(0, 1, by = 0.25))), 
       labels=c("D1","D2","D3","D4"), include.lowest=TRUE)
 }
 box_data_Area$Area <- sapply(box_data_Area$Area, ApplyQuintiles)
+box_data_dt = reshape2::melt(box_data_Area)
 
-ggplot(data = box_data_Area,aes(x = Area,y=Dif))+
+
+ggplot(data = box_data_dt,aes(x = Area,y= value,fill = variable))+
   geom_boxplot(size = 0.5) + theme_classic()+
-  labs(x=" ", y = "\u0394CE (°C)")+scale_fill_manual(values=c('#F68657','#75B19D'))+
+  labs(x="City Size", y = "\u0394CE (°C)")+scale_fill_manual(values=c('#F68657','#75B19D'))+
   theme(axis.text = element_text(face="plain",color="black", size=18),
         axis.title=element_text(size=20,face="bold",color="black") ,
         legend.position="none")
 ##########3
+box_data_Area = as.data.frame(cbind(CE[,2],CE[,5],CE[,9]))
+colnames(box_data_Area) = c("D","ND","CZ")
+box_data_dt = reshape2::melt(box_data_Area, id.vars = "CZ")
+box_data_dt$value = as.numeric(box_data_dt$value)
+
+ggplot(data = box_data_dt,aes(x = CZ,y= value,fill = variable))+
+  geom_boxplot(size = 0.5) + theme_classic()+
+  labs(x="Climate Zone", y = "CE (°C)")+scale_fill_manual(values=c('#F68657','#75B19D'))+
+  theme(axis.text = element_text(face="plain",color="black", size=18),
+        axis.title=element_text(size=20,face="bold",color="black") ,
+        legend.position="none")
