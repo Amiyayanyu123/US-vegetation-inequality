@@ -1,0 +1,207 @@
+## =========================
+## Load packages
+## =========================
+library(xts)
+library(lubridate)
+library(ggstatsplot)
+library(rsq)
+library(extrafont)
+library(car)
+library(bfast)
+library(remotes)
+library(ggpmisc)
+library(dplyr)
+library(mice)
+library(VIM)
+library(tidyverse)
+library(reshape2)
+library(lme4)
+library(randomForest)
+library(spgwr)
+library(ggplot2)
+
+## Function to calculate standard error
+stderr <- function(x, na.rm = FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x) / length(x))
+}
+
+## =========================
+## 0. Read and merge data
+## =========================
+setwd("D:\\D\\SSI")
+
+dt1 <- read.table("Data_all.csv",  header = TRUE, na.strings = "NA", sep = ",")
+dt2 <- read.table("Land.csv",      header = TRUE, na.strings = "NA", sep = ",")
+dt3 <- read.table("NDVI_Data.csv", header = TRUE, na.strings = "NA", sep = ",")
+
+dt  <- merge(dt1, dt2)
+dt  <- merge(dt,  dt3)
+
+# write.table(dt, "dt_all.csv", row.names = TRUE, sep = ",")
+
+## =========================
+## 1. Data pre-processing
+## =========================
+setwd("D:\\D\\SSI")
+Data <- read.table("dt_all.csv", header = TRUE, na.strings = "NA", sep = ",")
+Data <- na.omit(Data)
+
+## =========================
+## 2. Multiple analysis (per city)
+## =========================
+Data$ORI <- as.numeric(Data$ORI)
+
+city_list <- unique(Data$ORI)
+
+set.seed(123)  # Set random seed for reproducibility
+
+lm_b_social      <- list()
+lm_p_social      <- list()
+lm_b_social_std  <- list()
+R2_adj_all       <- NULL
+lmg_social       <- list()
+ID               <- NULL
+VIF_city         <- list()
+
+for (b in city_list) {
+
+  ## Subset data for one city (by ORI)
+  dt_sub <- Data[Data$ORI == b, ]
+  dt_sub <- na.omit(dt_sub)
+  n      <- nrow(dt_sub)
+
+  ## Standardize predictors and response within the city
+  dt_sub <- dt_sub %>%
+    mutate(
+      NDVI_Z_Change = scale(NDVI_Z_Change),
+      white         = scale(white),
+      black         = scale(black),
+      hispanic      = scale(hispanic),
+      other         = scale(other),
+      POC           = scale(POC),
+      poverty       = scale(poverty),
+      poverty12     = scale(poverty12),
+      poverty2      = scale(poverty2),
+      education     = scale(education),
+      Median_age    = scale(Median_age)
+    )
+
+  ## Global linear model for social variables
+  social <- lm(
+    formula = NDVI_Z_Change ~ white + black + hispanic + other + POC +
+      poverty + poverty12 + poverty2 + education + Median_age,
+    data = dt_sub
+  )
+
+  ## Stepwise model selection (both directions)
+  step.model <- stepAIC(
+    social,
+    direction = "both",
+    trace = FALSE
+  )
+
+  ## Extract final model formula from stepwise selection
+  step_regression_formula <- summary(step.model)$call$formula
+
+  ## Select optimal bandwidth for GWR based on the stepwise-selected formula
+  GWRbandwidth <- gwr.sel(
+    formula = step_regression_formula,
+    data    = dt_sub,
+    coords  = cbind(dt_sub$x, dt_sub$y),
+    adapt   = TRUE
+  )
+
+  ## Fit GWR model
+  gwr.model <- gwr(
+    formula   = step_regression_formula,
+    data      = dt_sub,
+    coords    = cbind(dt_sub$x, dt_sub$y),
+    adapt     = GWRbandwidth,
+    hatmatrix = TRUE,
+    se.fit    = TRUE
+  )
+
+  ## Extract local results
+  point_results <- as.data.frame(gwr.model$SDF)
+
+  ## Mean local R² for this city
+  gwr_r <- mean(gwr.model$SDF$localR2, na.rm = TRUE)
+
+  ## Store results
+  R2_adj_all <- rbind(R2_adj_all, gwr_r)
+  ID         <- rbind(ID, b)
+}
+
+## Boxplot of mean local R² across cities
+boxplot(R2_adj_all, ylab = "Mean local R² of GWR")
+
+## Combine city ID and R² into one data frame and save
+Step_all <- cbind(ID, R2_adj_all)
+colnames(Step_all) <- c("ID", "R2")
+write.table(Step_all, "R2_GWR_model_ID.csv", sep = ",", row.names = FALSE)
+
+## =========================
+## 3. Plot R² by climate zone and city size
+## =========================
+setwd("D:\\D\\GWR_for_each_city")
+
+dt1 <- read.table("climate.csv",          header = TRUE, na.strings = "NA", sep = ",")
+dt2 <- read.table("R2_GWR_model_ID.csv",  header = TRUE, na.strings = "NA", sep = ",")
+dt3 <- read.table("points_us_cities.csv", header = TRUE, na.strings = "NA", sep = ",")
+dt4 <- read.table("City_size.csv",        header = TRUE, na.strings = "NA", sep = ",")
+
+colnames(dt1) <- c("ORI", "climate", "CZ")
+
+data <- merge(dt1, dt2, by.x = "ORI", by.y = "ID")
+data <- merge(data, dt3, by = "ORI")
+data <- merge(data, dt4, by = "ORI")
+
+## Median R² by climate zone
+CZ_Zone_mean <- data %>%
+  group_by(CZ) %>%
+  summarise(WY = median(R2, na.rm = TRUE))
+
+## Boxplot of R² by climate zone
+ggplot(data = data, aes(x = CZ, y = R2, fill = CZ)) +
+  theme_classic() +
+  geom_boxplot() +
+  labs(x = "Climate zones", y = "Local R² in GWR for each city") +
+  theme(
+    axis.text  = element_text(face = "plain", color = "black", size = 20),
+    axis.title = element_text(size = 22, face = "bold", color = "black"),
+    legend.position = "none"
+  ) +
+  scale_fill_manual(values = c("#FF8989", "#FF9547", "#7CBB9C", "#4490C4"))
+
+## =========================
+## 4. Classify cities by area and plot R²
+## =========================
+
+## Function to classify cities into size classes based on area
+ApplyQuintiles <- function(x) {
+  cut(
+    x,
+    breaks = c(100, 580, 2000, 200000),
+    labels = c("1", "2", "3"),
+    include.lowest = TRUE
+  )
+}
+
+data$Class <- sapply(data$Area, ApplyQuintiles)
+
+## Boxplot of R² by city size class
+ggplot(data = data, aes(x = Class, y = R2)) +
+  theme_classic() +
+  geom_boxplot() +
+  labs(x = "City size class", y = "Local R² in GWR for each city") +
+  theme(
+    axis.text  = element_text(face = "plain", color = "black", size = 20),
+    axis.title = element_text(size = 22, face = "bold", color = "black"),
+    legend.position = "none"
+  )
+
+## Median R² by city size class
+CZ_Zone_mean_class <- data %>%
+  group_by(Class) %>%
+  summarise(WY = median(R2, na.rm = TRUE))
