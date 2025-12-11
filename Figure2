@@ -1,0 +1,261 @@
+## =========================
+## Load packages
+## =========================
+library(reshape2)
+library(tidyverse)
+library(bootstrap)
+library(QuantPsyc)   # For standardized regression coefficients, e.g., lm.beta(lm_chap)
+library(relaimpo)
+library(psych)
+library(ggplot2)
+
+## Mixed models / spatial autocorrelation tools
+library(nlme)
+library(ape)
+library(MuMIn)
+
+library(ggstatsplot)
+library(rsq)
+library(extrafont)
+library(car)
+library(bfast)
+library(remotes)
+library(zoo)
+library(mblm)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+
+## =========================
+## Font settings and helper functions
+## =========================
+windowsFonts(Arial = windowsFont("Arial"))
+
+stderr <- function(x, na.rm = FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x) / length(x))
+}
+
+library(extrafont)
+windowsFonts(Times = windowsFont("TT Arial"))
+
+## =========================
+## 1. Data pre-processing
+## =========================
+setwd("D:\\D\\Step_4_climate change")
+
+data        <- read.table("2014_2018.csv",      header = TRUE, na.strings = "NA", sep = ",")
+climate1    <- read.table("climate_change.csv", header = TRUE, na.strings = "NA", sep = ",")
+climate2    <- read.table("climate_NDVI_Z.csv", header = TRUE, na.strings = "NA", sep = ",")
+ORI         <- read.table("ORI_census_tract.csv", header = TRUE, na.strings = "NA", sep = ",")
+median_age  <- read.table("median_age.txt",     header = TRUE, na.strings = "NA", sep = "\t")
+
+## Merge all covariates
+Data <- merge(data, ORI)
+Data <- merge(Data, climate1)
+Data <- merge(Data, climate2)
+Data <- merge(Data, median_age)
+Data <- na.omit(Data)
+
+## NDVI change (drought vs non-drought, or D vs ND)
+Data$NDVI_Z_Change <- Data$D_R - Data$ND_R
+
+dt   <- na.omit(Data)
+list <- unique(dt$ORI)
+
+library(DescTools)
+library(entropy)
+library(ape)
+
+## =========================
+## 2. Income inequality: NDVI change in high-poverty vs high-income groups
+## =========================
+q25 <- {}
+q75 <- {}
+K   <- {}
+ID  <- {}
+DIF <- {}
+
+for (b in list) {
+  ## Subset one city (ORI)
+  dt_sub <- dt[dt[, 12] == b, ]
+  dt_sub <- na.omit(dt_sub)
+  n      <- nrow(dt_sub)
+
+  ## 75th percentile thresholds for poverty-related variables
+  below <- quantile(dt_sub$poverty,  prob = 0.75)
+  two   <- quantile(dt_sub$poverty2, prob = 0.75)
+
+  ## Mean NDVI change for high-poverty group vs high-income group
+  below_poverty <- mean(dt_sub[dt_sub$poverty  > below, ]$NDVI_Z_Change)
+  two_poverty   <- mean(dt_sub[dt_sub$poverty2 > two,   ]$NDVI_Z_Change)
+
+  ## Non-parametric test between the two groups
+  p <- wilcox.test(
+    dt_sub[dt_sub$poverty  > below, ]$NDVI_Z_Change,
+    dt_sub[dt_sub$poverty2 > two,   ]$NDVI_Z_Change,
+    alternative = "two.sided",
+    exact = FALSE
+  )$p.value
+
+  ## Difference between groups (high income – high poverty)
+  dif <- two_poverty - below_poverty
+
+  ID  <- rbind(ID,  b)
+  q25 <- rbind(q25, below_poverty)
+  q75 <- rbind(q75, two_poverty)
+  K   <- rbind(K,   p)
+  DIF <- rbind(DIF, dif)
+}
+
+all <- cbind(ID, q25, q75, DIF, K)
+all <- na.omit(all)
+colnames(all) <- c("ORI", "below_poverty", "two_poverty", "Income_DIF", "P")
+
+write.table(all, "NDVI_z_Income.csv", row.names = FALSE, sep = ",")
+
+## =========================
+## 3. Racial inequality: NDVI change in high-White vs high-POC tracts
+## =========================
+dt   <- na.omit(Data)
+list <- unique(dt$ORI)
+
+q25 <- {}
+q75 <- {}
+K   <- {}
+ID  <- {}
+DIF <- {}
+
+for (b in list) {
+  dt_sub <- dt[dt[, 12] == b, ]
+  dt_sub <- na.omit(dt_sub)
+  n      <- nrow(dt_sub)
+
+  ## 75th percentile thresholds for racial composition
+  below <- quantile(dt_sub$white, prob = 0.75)
+  two   <- quantile(dt_sub$POC,   prob = 0.75)
+
+  ## Mean NDVI change for high-White vs high-POC tracts
+  below_poverty <- mean(dt_sub[dt_sub$white > below, ]$NDVI_Z_Change)
+  two_poverty   <- mean(dt_sub[dt_sub$POC   > two,   ]$NDVI_Z_Change)
+
+  ## Distribution comparison (KS test)
+  p <- ks.test(
+    dt_sub[dt_sub$white > below, ]$NDVI_Z_Change,
+    dt_sub[dt_sub$POC   > two,   ]$NDVI_Z_Change,
+    alternative = "two.sided"
+  )$p.value
+
+  ## Difference between groups (White – POC)
+  dif <- below_poverty - two_poverty
+
+  ID  <- rbind(ID,  b)
+  q25 <- rbind(q25, below_poverty)
+  q75 <- rbind(q75, two_poverty)
+  K   <- rbind(K,   p)
+  DIF <- rbind(DIF, dif)
+}
+
+all <- cbind(ID, q25, q75, DIF, K)
+all <- na.omit(all)
+colnames(all) <- c("ORI", "white", "POC", "Race_DIF", "P")
+
+write.table(all, "NDVI_Z_Race.csv", row.names = FALSE, sep = ",")
+
+## =========================
+## 4. Education inequality: NDVI change in high- vs low-education tracts
+## =========================
+dt   <- na.omit(Data)
+list <- unique(dt$ORI)
+
+q25 <- {}
+q75 <- {}
+K   <- {}
+ID  <- {}
+DIF <- {}
+
+for (b in list) {
+  dt_sub <- dt[dt[, 12] == b, ]
+  dt_sub <- na.omit(dt_sub)
+  n      <- nrow(dt_sub)
+
+  ## 75th and 25th percentile thresholds for education
+  below <- quantile(dt_sub$education, prob = 0.75)
+  two   <- quantile(dt_sub$education, prob = 0.25)
+
+  ## Mean NDVI change for high-education vs low-education tracts
+  below_poverty <- mean(dt_sub[dt_sub$education > below, ]$NDVI_Z_Change)
+  two_poverty   <- mean(dt_sub[dt_sub$education < two,   ]$NDVI_Z_Change)
+
+  ## Non-parametric test between education groups
+  p <- wilcox.test(
+    dt_sub[dt_sub$education > below, ]$NDVI_Z_Change,
+    dt_sub[dt_sub$education < two,   ]$NDVI_Z_Change,
+    alternative = "two.sided",
+    exact = FALSE
+  )$p.value
+
+  ## Difference between groups (high education – low education)
+  dif <- below_poverty - two_poverty
+
+  ID  <- rbind(ID,  b)
+  q25 <- rbind(q25, below_poverty)
+  q75 <- rbind(q75, two_poverty)
+  K   <- rbind(K,   p)
+  DIF <- rbind(DIF, dif)
+}
+
+all <- cbind(ID, q25, q75, DIF, K)
+all <- na.omit(all)
+colnames(all) <- c("ORI", "high_education", "low_education", "education_DIF", "P")
+
+write.table(all, "NDVI_Z_education.csv", row.names = FALSE, sep = ",")
+
+## =========================
+## 5. Age inequality: NDVI change in older vs younger communities
+## =========================
+dt   <- na.omit(Data)
+list <- unique(dt$ORI)
+
+q25 <- {}
+q75 <- {}
+K   <- {}
+ID  <- {}
+DIF <- {}
+
+for (b in list) {
+  dt_sub <- dt[dt[, 12] == b, ]
+  dt_sub <- na.omit(dt_sub)
+  n      <- nrow(dt_sub)
+
+  ## 75th and 25th percentile thresholds for median age
+  below <- quantile(dt_sub$Median_age, prob = 0.75)
+  two   <- quantile(dt_sub$Median_age, prob = 0.25)
+
+  ## Mean NDVI change for older vs younger communities
+  below_poverty <- mean(dt_sub[dt_sub$Median_age > below, ]$NDVI_Z_Change)
+  two_poverty   <- mean(dt_sub[dt_sub$Median_age < two,   ]$NDVI_Z_Change)
+
+  ## Non-parametric test between age groups
+  p <- wilcox.test(
+    dt_sub[dt_sub$Median_age > below, ]$NDVI_Z_Change,
+    dt_sub[dt_sub$Median_age < two,   ]$NDVI_Z_Change,
+    alternative = "two.sided",
+    exact = FALSE
+  )$p.value
+
+  ## Difference between groups (older – younger)
+  dif <- below_poverty - two_poverty
+
+  ID  <- rbind(ID,  b)
+  q25 <- rbind(q25, below_poverty)
+  q75 <- rbind(q75, two_poverty)
+  K   <- rbind(K,   p)
+  DIF <- rbind(DIF, dif)
+}
+
+all <- cbind(ID, q25, q75, DIF, K)
+all <- na.omit(all)
+colnames(all) <- c("ORI", "high_Median_age", "low_Median_age", "Median_age_DIF", "P")
+
+write.table(all, "NDVI_Z_Median_age.csv", row.names = FALSE, sep = ",")
