@@ -421,4 +421,160 @@ ggplot(Day_delta, aes(x = Quantile, y = median, group = Period, color = Period))
   scale_x_continuous(breaks = seq(0, 10, 1)) +
   theme(
     axis.title        = element_text(size = 20, face = "bold", color = "black"),
-    axis.text         = element_text(size = 18, fac_
+    axis.text         = element_text(size = 18, face = "plain", color = "black"),
+    panel.background  = element_rect(colour = "black", fill = NA),
+    panel.grid.minor  = element_blank(),
+    text              = element_text(size = 18),
+    legend.position   = "none",
+    legend.text       = element_text(size = 18),
+    legend.background = element_rect(colour = NA, fill = NA),
+    axis.ticks        = element_line(colour = "black")
+  )
+
+## =========================
+## 9. CE comparison: drought vs non-drought
+## =========================
+library(ggpmisc)
+
+setwd("D:\\D\\Figures\\CE")
+
+CE_Drought    <- read.table("CE_Drought.csv",    header = TRUE, na.strings = "NA", sep = ",")
+CE_nonDrought <- read.table("CE_nonDrought.csv", header = TRUE, na.strings = "NA", sep = ",")
+climate       <- read.table("climate.csv",       header = TRUE, na.strings = "NA", sep = ",")
+colnames(climate) <- c("ORI", "climate", "CZ")
+size          <- read.table("City_size.csv",     header = TRUE, na.strings = "NA", sep = ",")
+
+## Merge CE results for drought and non-drought with climate and city size
+data_CE <- merge(CE_Drought, CE_nonDrought, by.x = "ORI")
+data_CE <- merge(data_CE, climate)
+data_CE <- merge(data_CE, size)
+
+## Convert slopes to cooling effect (negative slope => positive cooling)
+data_CE$Slope    <- data_CE$Slope    * (-0.1)
+data_CE$Slope_ND <- data_CE$Slope_ND * (-0.1)
+
+## Difference in CE between drought and non-drought
+data_CE$Dif_CE <- data_CE$Slope - data_CE$Slope_ND
+
+## Keep only cities where both regressions are significant
+CE <- data_CE %>%
+  filter(P < 0.05 & P_ND < 0.05)
+
+## Scatter plot of CE (drought vs non-drought) with regression line
+ggplot(CE, aes(x = Slope, y = Slope_ND)) +
+  geom_point(aes(size = Area)) +
+  geom_abline(slope = 1, intercept = 0) +
+  geom_smooth(method = lm, se = TRUE, size = 1.5,
+              color = "red", linetype = "dashed") +
+  geom_rug() +
+  labs(x = "CE Drought", y = "CE Non-drought") +
+  stat_poly_eq(
+    formula = y ~ x,
+    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+    parse = TRUE
+  ) +
+  scale_size_continuous(range = c(0.5, 5)) +
+  theme(
+    axis.title        = element_text(size = 20, face = "bold", color = "black"),
+    axis.text         = element_text(size = 18, face = "plain", color = "black"),
+    panel.background  = element_rect(colour = "black", fill = NA),
+    panel.grid.minor  = element_blank(),
+    text              = element_text(size = 18),
+    legend.position   = "bottom",
+    legend.text       = element_text(size = 18),
+    legend.background = element_rect(colour = NA, fill = NA),
+    axis.ticks        = element_line(colour = "black")
+  )
+
+## Paired comparison of CE (Wilcoxon test)
+data_CE$Dif_CE <- data_CE$Slope - data_CE$Slope_ND
+wilcox.test(data_CE$Slope, data_CE$Slope_ND)
+
+## Boxplot: CE (drought vs non-drought) for significant cities
+box_data <- as.data.frame(cbind(CE$Slope, CE$Slope_ND))
+colnames(box_data) <- c("D", "ND")
+box_dt <- reshape::melt(box_data)
+
+ggplot(data = box_dt, aes(x = variable, y = value, fill = variable)) +
+  geom_boxplot(size = 0.5) +
+  theme_classic() +
+  labs(x = " ", y = "CE (°C)") +
+  scale_fill_manual(values = c("#F68657", "#75B19D")) +
+  theme(
+    axis.text       = element_text(face = "plain", color = "black", size = 18),
+    axis.title      = element_text(size = 20, face = "bold", color = "black"),
+    legend.position = "none"
+  )
+
+## =========================
+## 10. ΔCE by climate zone
+## =========================
+box_data_CZ <- as.data.frame(cbind(CE$Dif_CE, CE$CZ))
+colnames(box_data_CZ) <- c("Dif", "CZ")
+box_data_CZ$Dif <- as.numeric(box_data_CZ$Dif)
+
+box_CZ <- box_data_CZ %>%
+  group_by(CZ) %>%
+  summarize(
+    mean = mean(Dif),
+    se   = stderr(Dif)
+  )
+
+ggplot(data = box_data_CZ, aes(x = CZ, y = Dif)) +
+  geom_boxplot(size = 0.5) +
+  theme_classic() +
+  labs(x = " ", y = "\u0394CE (°C)") +
+  theme(
+    axis.text       = element_text(face = "plain", color = "black", size = 18),
+    axis.title      = element_text(size = 20, face = "bold", color = "black"),
+    legend.position = "none"
+  )
+
+## =========================
+## 11. CE by city size (quartiles)
+## =========================
+box_data_Area <- as.data.frame(cbind(CE$Slope, CE$Slope_ND, CE$Area))
+colnames(box_data_Area) <- c("D", "ND", "Area")
+
+ApplyQuintiles <- function(x) {
+  cut(
+    x,
+    breaks = c(quantile(box_data_Area$Area, probs = seq(0, 1, by = 0.25))),
+    labels = c("D1", "D2", "D3", "D4"),
+    include.lowest = TRUE
+  )
+}
+box_data_Area$Area <- sapply(box_data_Area$Area, ApplyQuintiles)
+
+box_data_dt <- reshape2::melt(box_data_Area)
+
+ggplot(data = box_data_dt, aes(x = Area, y = value, fill = variable)) +
+  geom_boxplot(size = 0.5) +
+  theme_classic() +
+  labs(x = "City Size", y = "\u0394CE (°C)") +
+  scale_fill_manual(values = c("#F68657", "#75B19D")) +
+  theme(
+    axis.text       = element_text(face = "plain", color = "black", size = 18),
+    axis.title      = element_text(size = 20, face = "bold", color = "black"),
+    legend.position = "none"
+  )
+
+## =========================
+## 12. CE by climate zone (drought vs non-drought)
+## =========================
+box_data_Area <- as.data.frame(cbind(CE[, 2], CE[, 5], CE[, 9]))
+colnames(box_data_Area) <- c("D", "ND", "CZ")
+
+box_data_dt <- reshape2::melt(box_data_Area, id.vars = "CZ")
+box_data_dt$value <- as.numeric(box_data_dt$value)
+
+ggplot(data = box_data_dt, aes(x = CZ, y = value, fill = variable)) +
+  geom_boxplot(size = 0.5) +
+  theme_classic() +
+  labs(x = "Climate Zone", y = "CE (°C)") +
+  scale_fill_manual(values = c("#F68657", "#75B19D")) +
+  theme(
+    axis.text       = element_text(face = "plain", color = "black", size = 18),
+    axis.title      = element_text(size = 20, face = "bold", color = "black"),
+    legend.position = "none"
+  )
